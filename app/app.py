@@ -781,45 +781,54 @@ totais = pd.DataFrame([{
 }])
 tabela = pd.concat([vg, totais], ignore_index=True)
 
-linhas = ""
-for _, row in tabela.iterrows():
-    uf   = str(row["uf_notificacao"])
-    tn   = int(row["total_notificacoes"])
-    tc   = int(row["total_confirmados"])
-    tm   = int(row["total_meningococica"])
-    tb   = int(row["total_sorogrupo_b"])
-    to_  = int(row["total_outro_tipo"])
-    pc   = tc / tn * 100 if tn else 0
-    pm   = tm / tc * 100 if tc else 0
-    po   = to_ / tc * 100 if tc else 0
-    br   = uf == "BRASIL"
-    etr  = 'style="background:rgba(232,96,10,0.12)"' if br else ""
-    euf  = f'style="font-weight:800;color:{"#fff" if br else LARANJA_CLARO}"'
-    linhas += f"""
-    <tr {etr}>
-        <td class="uf" {euf}>{uf}</td>
-        <td class="num">{tn:,}</td>
-        <td class="num">{tc:,}</td><td class="pct">({pc:.1f}%)</td>
-        <td class="num">{tm:,}</td><td class="pct">({pm:.1f}%)</td>
-        <td class="num">{tb:,}</td>
-        <td class="num">{to_:,}</td><td class="pct">({po:.1f}%)</td>
-    </tr>"""
+tabela_visao = tabela.copy()
+tabela_visao["total_confirmados_pct"] = tabela_visao["total_confirmados"] / tabela_visao["total_notificacoes"] * 100
+tabela_visao["total_meningococica_pct"] = tabela_visao["total_meningococica"] / tabela_visao["total_confirmados"] * 100
+tabela_visao["total_sorogrupo_b_pct"] = tabela_visao["total_sorogrupo_b"] / tabela_visao["total_confirmados"] * 100
+tabela_visao["total_outro_tipo_pct"] = tabela_visao["total_outro_tipo"] / tabela_visao["total_confirmados"] * 100
+tabela_visao = tabela_visao[[
+    "uf_notificacao",
+    "total_notificacoes",
+    "total_confirmados",
+    "total_confirmados_pct",
+    "total_meningococica",
+    "total_meningococica_pct",
+    "total_sorogrupo_b",
+    "total_sorogrupo_b_pct",
+    "total_outro_tipo",
+    "total_outro_tipo_pct",
+]].sort_values("total_notificacoes", ascending=False)
+tabela_visao = tabela_visao.rename(columns={
+    "uf_notificacao": "UF",
+    "total_notificacoes": "Notificações",
+    "total_confirmados": "Confirmados",
+    "total_confirmados_pct": "% Confirmados",
+    "total_meningococica": "Meningocócica",
+    "total_meningococica_pct": "% Meningocócica",
+    "total_sorogrupo_b": "Sorogrupo B",
+    "total_sorogrupo_b_pct": "% Sorogrupo B",
+    "total_outro_tipo": "Outro Tipo",
+    "total_outro_tipo_pct": "% Outro Tipo",
+})
 
-st.markdown(f"""
-<div style="max-height:400px;overflow-y:auto;border:1px solid {CINZA_LINHA};border-radius:8px">
-<table class="styled-table">
-    <thead><tr>
-        <th>UF</th>
-        <th style="text-align:right">Notificações</th>
-        <th style="text-align:right">Confirmados</th><th>%</th>
-        <th style="text-align:right">Meningocócica</th><th>%</th>
-        <th style="text-align:right">Sorogrupo B</th>
-        <th style="text-align:right">Outro Tipo</th><th>%</th>
-    </tr></thead>
-    <tbody>{linhas}</tbody>
-</table>
-</div>
-""", unsafe_allow_html=True)
+st.dataframe(
+    tabela_visao,
+    use_container_width=True,
+    hide_index=True,
+    height=420,
+    column_config={
+        "UF": st.column_config.TextColumn("UF"),
+        "Notificações": st.column_config.NumberColumn("Notificações", format="%,d"),
+        "Confirmados": st.column_config.NumberColumn("Confirmados", format="%,d"),
+        "% Confirmados": st.column_config.NumberColumn("% Confirmados", format="%.1f%%"),
+        "Meningocócica": st.column_config.NumberColumn("Meningocócica", format="%,d"),
+        "% Meningocócica": st.column_config.NumberColumn("% Meningocócica", format="%.1f%%"),
+        "Sorogrupo B": st.column_config.NumberColumn("Sorogrupo B", format="%,d"),
+        "% Sorogrupo B": st.column_config.NumberColumn("% Sorogrupo B", format="%.1f%%"),
+        "Outro Tipo": st.column_config.NumberColumn("Outro Tipo", format="%,d"),
+        "% Outro Tipo": st.column_config.NumberColumn("% Outro Tipo", format="%.1f%%"),
+    },
+)
 
 
 # ── Seção 2: Evolução — Notificações vs Confirmados ───────────────────────────
