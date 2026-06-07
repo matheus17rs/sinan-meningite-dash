@@ -347,13 +347,33 @@ def numero_semana(sem_label: pd.Series) -> pd.Series:
     return pd.to_numeric(sem_label.astype(str).str.extract(r"SE(\d{2})$")[0], errors="coerce")
 
 
-def calcular_yoy_periodo(base_total: pd.DataFrame) -> dict:
-    base_yoy = base_total.copy()
-    base_yoy["ano_notificacao"] = base_yoy["DT_NOTIFIC"].dt.year
-    base_yoy["sem_num"] = numero_semana(base_yoy["sem_label"])
+def ano_semana(sem_label: pd.Series) -> pd.Series:
+    return pd.to_numeric(sem_label.astype(str).str.extract(r"^(\d{4})-SE\d{2}$")[0], errors="coerce")
 
-    semanas_2026 = base_yoy.loc[base_yoy["ano_notificacao"] == 2026, "sem_num"].dropna()
-    semana_atual = int(semanas_2026.max()) if not semanas_2026.empty else None
+
+def ultima_semana_completa(base_total: pd.DataFrame, ano: int = 2026, dias_minimos: int = 7):
+    base_semana = base_total.copy()
+    base_semana["DT_NOTIFIC"] = pd.to_datetime(base_semana["DT_NOTIFIC"], errors="coerce")
+    base_semana["ano_semana"] = ano_semana(base_semana["sem_label"])
+    base_semana["sem_num"] = numero_semana(base_semana["sem_label"])
+    base_semana["data_notificacao"] = base_semana["DT_NOTIFIC"].dt.date
+
+    completude = (
+        base_semana[base_semana["ano_semana"].eq(ano)]
+        .dropna(subset=["sem_num", "data_notificacao"])
+        .groupby("sem_num")["data_notificacao"]
+        .nunique()
+    )
+    semanas_completas = completude[completude >= dias_minimos]
+    if semanas_completas.empty:
+        return None
+    return int(semanas_completas.index.max())
+
+
+def calcular_yoy_periodo(base_total: pd.DataFrame, semana_limite) -> dict:
+    base_yoy = base_total.copy()
+    base_yoy["ano_semana"] = ano_semana(base_yoy["sem_label"])
+    base_yoy["sem_num"] = numero_semana(base_yoy["sem_label"])
 
     metricas = {
         "total_notificacoes": lambda df: int(df["TP_NOT"].count()),
@@ -365,13 +385,13 @@ def calcular_yoy_periodo(base_total: pd.DataFrame) -> dict:
 
     resultado = {}
     for nome, funcao in metricas.items():
-        if semana_atual is None:
+        if semana_limite is None:
             valor_2026 = 0
             valor_2025 = 0
         else:
-            base_periodo = base_yoy[base_yoy["sem_num"].between(1, semana_atual, inclusive="both")]
-            valor_2026 = funcao(base_periodo[base_periodo["ano_notificacao"] == 2026])
-            valor_2025 = funcao(base_periodo[base_periodo["ano_notificacao"] == 2025])
+            base_periodo = base_yoy[base_yoy["sem_num"].between(1, semana_limite, inclusive="both")]
+            valor_2026 = funcao(base_periodo[base_periodo["ano_semana"] == 2026])
+            valor_2025 = funcao(base_periodo[base_periodo["ano_semana"] == 2025])
 
         delta_abs = valor_2026 - valor_2025
         delta_pct = (delta_abs / valor_2025 * 100) if valor_2025 else np.nan
@@ -380,7 +400,7 @@ def calcular_yoy_periodo(base_total: pd.DataFrame) -> dict:
             "valor_2025": valor_2025,
             "delta_abs": delta_abs,
             "delta_pct": delta_pct,
-            "semana_atual": semana_atual,
+            "semana_limite": semana_limite,
         }
 
     return resultado
@@ -393,24 +413,22 @@ def formatar_yoy(yoy: dict) -> str:
         sinal = "+" if yoy["delta_pct"] >= 0 else ""
         variacao = f"{sinal}{yoy['delta_pct']:.1f}%"
 
-    semana = yoy["semana_atual"] if yoy["semana_atual"] is not None else "N/D"
+    semana = yoy["semana_limite"] if yoy["semana_limite"] is not None else "N/D"
     return (
-        f"2026 x 2025 ate SE{semana}: {yoy['valor_2026']:,} vs "
+        f"2026 x 2025 ate SE{semana} completa: {yoy['valor_2026']:,} vs "
         f"{yoy['valor_2025']:,} ({variacao})"
     )
 
 
-def calcular_crescimento_uf(base_total: pd.DataFrame, coluna_mapa: str) -> pd.DataFrame:
+def calcular_crescimento_uf(base_total: pd.DataFrame, coluna_mapa: str, semana_limite) -> pd.DataFrame:
     base_yoy = base_total.copy()
-    base_yoy["ano_notificacao"] = base_yoy["DT_NOTIFIC"].dt.year
+    base_yoy["ano_semana"] = ano_semana(base_yoy["sem_label"])
     base_yoy["sem_num"] = numero_semana(base_yoy["sem_label"])
 
-    semanas_2026 = base_yoy.loc[base_yoy["ano_notificacao"] == 2026, "sem_num"].dropna()
-    if semanas_2026.empty:
+    if semana_limite is None:
         return pd.DataFrame(columns=["uf_notificacao", "valor_2026", "valor_2025", "crescimento_pct"])
 
-    semana_atual = int(semanas_2026.max())
-    base_periodo = base_yoy[base_yoy["sem_num"].between(1, semana_atual, inclusive="both")]
+    base_periodo = base_yoy[base_yoy["sem_num"].between(1, semana_limite, inclusive="both")]
 
     if coluna_mapa == "total_notificacoes":
         agg_col = "TP_NOT"
@@ -426,11 +444,11 @@ def calcular_crescimento_uf(base_total: pd.DataFrame, coluna_mapa: str) -> pd.Da
         agg_func = "sum"
 
     resumo = (
-        base_periodo.groupby(["uf_notificacao", "ano_notificacao"], as_index=False)
+        base_periodo.groupby(["uf_notificacao", "ano_semana"], as_index=False)
         .agg(valor=(agg_col, agg_func))
     )
     pivot = (
-        resumo.pivot(index="uf_notificacao", columns="ano_notificacao", values="valor")
+        resumo.pivot(index="uf_notificacao", columns="ano_semana", values="valor")
         .fillna(0)
         .rename(columns={2025: "valor_2025", 2026: "valor_2026"})
         .reset_index()
@@ -687,7 +705,8 @@ if base_filtrada.empty:
     st.stop()
 
 dados = gerar_tabelas_dashboard(base_filtrada)
-yoy_cards = calcular_yoy_periodo(base_uf)
+semana_limite_yoy = ultima_semana_completa(base)
+yoy_cards = calcular_yoy_periodo(base_uf, semana_limite_yoy)
 vg  = dados.get("visao_geral", pd.DataFrame())
 es  = dados.get("evolucao_semanal", pd.DataFrame())
 fe  = dados.get("faixa_etaria",  pd.DataFrame())
@@ -910,7 +929,7 @@ col_mapa_map = {
 coluna_mapa = col_mapa_map[tipo_mapa]
 
 if criterio_mapa == "Crescimento 2026 x 2025":
-    mapa_df = calcular_crescimento_uf(base_uf, coluna_mapa)
+    mapa_df = calcular_crescimento_uf(base_uf, coluna_mapa, semana_limite_yoy)
     mapa_df["nome_uf"] = mapa_df["uf_notificacao"].map(SIGLA_PARA_NOME)
     mapa_df = mapa_df.dropna(subset=["nome_uf"])
     cor_mapa = "crescimento_pct"
