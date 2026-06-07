@@ -493,6 +493,10 @@ if not anos_disponiveis:
     st.error("A base nao possui valores validos em DT_NOTIFIC para montar o filtro de ano.")
     st.stop()
 
+ultima_atualizacao = metadata.get("generated_at", "N/D")
+fonte_dados = metadata.get("source", "desconhecida")
+ultima_sem = base["sem_label"].dropna().max() if "sem_label" in base.columns else "N/D"
+
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
