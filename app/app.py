@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 from pathlib import Path
 import pandas as pd
@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 import requests
 
-# ── Configuração da página ────────────────────────────────────────────────────
+# â”€â”€ ConfiguraÃ§Ã£o da pÃ¡gina â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 st.set_page_config(
     page_title="Meningite | Vigilância Epidemiológica",
     page_icon="🧠",
@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Paleta (mesma identidade visual do SIVEP) ─────────────────────────────────
+# â”€â”€ Paleta (mesma identidade visual do SIVEP) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 LARANJA        = "#E8600A"
 LARANJA_CLARO  = "#F28C3A"
 LARANJA_ESCURO = "#B84A06"
@@ -30,7 +30,7 @@ AMARELO_ACC    = "#F5B841"
 AZUL_LINHA     = "#4A9EBF"
 VERDE_LINHA    = "#5DBF7A"
 
-# ── CSS ───────────────────────────────────────────────────────────────────────
+# â”€â”€ CSS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500&display=swap');
@@ -201,7 +201,7 @@ div[data-baseweb="select"] > div {{
 """, unsafe_allow_html=True)
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def layout_plotly(fig, height=340):
     fig.update_layout(
         height=height,
@@ -351,17 +351,23 @@ def ano_semana(sem_label: pd.Series) -> pd.Series:
     return pd.to_numeric(sem_label.astype(str).str.extract(r"^(\d{4})-SE\d{2}$")[0], errors="coerce")
 
 
-def ultima_semana_completa(base_total: pd.DataFrame, ano: int = 2026, dias_minimos: int = 7):
+def ultima_semana_completa(
+    base_total: pd.DataFrame,
+    ano: int = 2026,
+    dias_minimos: int = 7,
+    date_col: str = "DT_NOTIFIC",
+    sem_label_col: str = "sem_label",
+):
     base_semana = base_total.copy()
-    base_semana["DT_NOTIFIC"] = pd.to_datetime(base_semana["DT_NOTIFIC"], errors="coerce")
-    base_semana["ano_semana"] = ano_semana(base_semana["sem_label"])
-    base_semana["sem_num"] = numero_semana(base_semana["sem_label"])
-    base_semana["data_notificacao"] = base_semana["DT_NOTIFIC"].dt.date
+    base_semana[date_col] = pd.to_datetime(base_semana[date_col], errors="coerce")
+    base_semana["ano_semana"] = ano_semana(base_semana[sem_label_col])
+    base_semana["sem_num"] = numero_semana(base_semana[sem_label_col])
+    base_semana["data_referencia"] = base_semana[date_col].dt.date
 
     completude = (
         base_semana[base_semana["ano_semana"].eq(ano)]
-        .dropna(subset=["sem_num", "data_notificacao"])
-        .groupby("sem_num")["data_notificacao"]
+        .dropna(subset=["sem_num", "data_referencia"])
+        .groupby("sem_num")["data_referencia"]
         .nunique()
     )
     semanas_completas = completude[completude >= dias_minimos]
@@ -370,10 +376,16 @@ def ultima_semana_completa(base_total: pd.DataFrame, ano: int = 2026, dias_minim
     return int(semanas_completas.index.max())
 
 
-def calcular_yoy_periodo(base_total: pd.DataFrame, semana_limite) -> dict:
+def calcular_yoy_periodo(
+    base_total: pd.DataFrame,
+    semana_limite,
+    date_col: str = "DT_NOTIFIC",
+    sem_label_col: str = "sem_label",
+) -> dict:
     base_yoy = base_total.copy()
-    base_yoy["ano_semana"] = ano_semana(base_yoy["sem_label"])
-    base_yoy["sem_num"] = numero_semana(base_yoy["sem_label"])
+    base_yoy[date_col] = pd.to_datetime(base_yoy[date_col], errors="coerce")
+    base_yoy["ano_semana"] = ano_semana(base_yoy[sem_label_col])
+    base_yoy["sem_num"] = numero_semana(base_yoy[sem_label_col])
 
     metricas = {
         "total_notificacoes": lambda df: int(df["TP_NOT"].count()),
@@ -420,10 +432,26 @@ def formatar_yoy(yoy: dict) -> str:
     )
 
 
-def calcular_crescimento_uf(base_total: pd.DataFrame, coluna_mapa: str, semana_limite) -> pd.DataFrame:
+def preparar_base_temporal(base_total: pd.DataFrame, date_col: str, sem_label_col: str) -> pd.DataFrame:
+    base_temporal = base_total.copy()
+    base_temporal[date_col] = pd.to_datetime(base_temporal[date_col], errors="coerce")
+    base_temporal["data_referencia"] = base_temporal[date_col]
+    base_temporal["ano_referencia"] = base_temporal[date_col].dt.year
+    base_temporal["sem_label"] = base_temporal[sem_label_col]
+    return base_temporal
+
+
+def calcular_crescimento_uf(
+    base_total: pd.DataFrame,
+    coluna_mapa: str,
+    semana_limite,
+    date_col: str = "DT_NOTIFIC",
+    sem_label_col: str = "sem_label",
+) -> pd.DataFrame:
     base_yoy = base_total.copy()
-    base_yoy["ano_semana"] = ano_semana(base_yoy["sem_label"])
-    base_yoy["sem_num"] = numero_semana(base_yoy["sem_label"])
+    base_yoy[date_col] = pd.to_datetime(base_yoy[date_col], errors="coerce")
+    base_yoy["ano_semana"] = ano_semana(base_yoy[sem_label_col])
+    base_yoy["sem_num"] = numero_semana(base_yoy[sem_label_col])
 
     if semana_limite is None:
         return pd.DataFrame(columns=["uf_notificacao", "valor_2026", "valor_2025", "crescimento_pct"])
@@ -598,7 +626,7 @@ def gerar_tabelas_dashboard(df: pd.DataFrame) -> dict:
     return dados_gerados
 
 
-# ── Carrega dados ─────────────────────────────────────────────────────────────
+# â”€â”€ Carrega dados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 geojson = carregar_geojson()
 metadata = carregar_metadata(BASE_DIR)
@@ -608,20 +636,16 @@ if base.empty:
     st.error("Nao foi possivel localizar a base enriquecida. Execute o ETL antes de abrir o dashboard.")
     st.stop()
 
-base["DT_NOTIFIC"] = pd.to_datetime(base["DT_NOTIFIC"], errors="coerce")
-anos_disponiveis = sorted(base["DT_NOTIFIC"].dt.year.dropna().astype(int).unique().tolist())
-ufs_disponiveis = sorted(base["uf_notificacao"].dropna().astype(str).unique().tolist())
-
-if not anos_disponiveis:
-    st.error("A base nao possui valores validos em DT_NOTIFIC para montar o filtro de ano.")
-    st.stop()
+for col in ["DT_NOTIFIC", "DT_SIN_PRI"]:
+    if col in base.columns:
+        base[col] = pd.to_datetime(base[col], errors="coerce")
 
 ultima_atualizacao = metadata.get("generated_at", "N/D")
 fonte_dados = metadata.get("source", "desconhecida")
-ultima_sem = base["sem_label"].dropna().max() if "sem_label" in base.columns else "N/D"
+ultima_sem_sintomas = base["sem_label"].dropna().max() if "sem_label" in base.columns else "N/D"
+ultima_sem_notificacao = base["sem_label_notificacao"].dropna().max() if "sem_label_notificacao" in base.columns else "N/D"
 
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(f"""
     <div style='margin-bottom:1.5rem'>
@@ -637,11 +661,12 @@ with st.sidebar:
         Fonte: SINAN / Ministério da Saúde<br>
         Origem da base: <b style='color:{LARANJA_CLARO}'>{fonte_dados}</b><br>
         Atualizado em: <b style='color:{LARANJA_CLARO}'>{ultima_atualizacao}</b><br>
-        Última Semana Epidemiológica disponível: <b style='color:{LARANJA_CLARO}'>{ultima_sem}</b><br>
+        Última semana dos sintomas: <b style='color:{LARANJA_CLARO}'>{ultima_sem_sintomas}</b><br>
+        Última semana da notificação: <b style='color:{LARANJA_CLARO}'>{ultima_sem_notificacao}</b><br>
     </div>
     <div style='margin-top:1rem;padding-top:1rem;border-top:1px solid {CINZA_LINHA};
                 font-size:0.70rem;color:{TEXTO_MUTED};line-height:1.8'>
-        <b style='color:{TEXTO_CLARO}'>Projeto de Exploração de Dados Públicos</b><br>
+        <b style='color:{TEXTO_CLARO}'>Projeto de exploração de dados públicos</b><br>
         Objetivo: Prova de Conceito<br>
         Autor: Matheus Rodrigues
     </div>
@@ -653,505 +678,562 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 
-# ── Header ────────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="app-header">
     <div>🧠</div>
     <div>
-        <h1>Vigilância de Meningite — Brasil 2025/2026</h1>
-        <p>Sistema de Informação de Agravos de Notificação · SINAN · Ministério da Saúde</p>
+        <h1>Vigilância de Meningite — Brasil</h1>
+        <p>Leitura por sintomas e por notificação no mesmo dashboard</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 
-# ── KPIs ──────────────────────────────────────────────────────────────────────
-st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-col_ano, col_uf, _ = st.columns([1, 1, 2])
-with col_ano:
-    st.markdown(
-        f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
-        f"letter-spacing:0.08em;margin-bottom:0.3rem'>Ano da Notificacao</div>",
-        unsafe_allow_html=True,
-    )
-    opcao_ano = st.selectbox(
-        "Ano",
-        options=["Todos"] + [str(ano) for ano in anos_disponiveis],
-        index=1 if "2026" in [str(ano) for ano in anos_disponiveis] else 0,
-        label_visibility="collapsed",
-        key="filtro_ano_notificacao",
-    )
-with col_uf:
-    st.markdown(
-        f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
-        f"letter-spacing:0.08em;margin-bottom:0.3rem'>UF de Notificacao</div>",
-        unsafe_allow_html=True,
-    )
-    opcao_uf = st.selectbox(
-        "UF",
-        options=["Todos"] + ufs_disponiveis,
-        index=0,
-        label_visibility="collapsed",
-        key="filtro_uf_notificacao",
-    )
 
-ano_selecionado = None if opcao_ano == "Todos" else int(opcao_ano)
-uf_selecionada = None if opcao_uf == "Todos" else opcao_uf
-base_uf = base if uf_selecionada is None else base[base["uf_notificacao"] == uf_selecionada].copy()
-base_filtrada = base_uf if ano_selecionado is None else base_uf[base_uf["DT_NOTIFIC"].dt.year == ano_selecionado].copy()
+def render_dashboard_tab(
+    base_origem: pd.DataFrame,
+    date_col: str,
+    sem_label_col: str,
+    tab_key: str,
+    tab_title: str,
+    tab_subtitle: str,
+    periodo_label: str,
+) -> None:
+    base_temporal = preparar_base_temporal(base_origem, date_col, sem_label_col)
 
-if base_filtrada.empty:
-    st.warning("Nao ha registros para o ano selecionado.")
-    st.stop()
+    anos_disponiveis = sorted(base_temporal[date_col].dt.year.dropna().astype(int).unique().tolist())
+    ufs_disponiveis = sorted(base_temporal["uf_notificacao"].dropna().astype(str).unique().tolist())
 
-dados = gerar_tabelas_dashboard(base_filtrada)
-semana_limite_yoy = ultima_semana_completa(base)
-yoy_cards = calcular_yoy_periodo(base_uf, semana_limite_yoy)
-vg  = dados.get("visao_geral", pd.DataFrame())
-es  = dados.get("evolucao_semanal", pd.DataFrame())
-fe  = dados.get("faixa_etaria",  pd.DataFrame())
-sx  = dados.get("sexo",          pd.DataFrame())
-sin = dados.get("sintomas",      pd.DataFrame())
-evo = dados.get("evolucao",      pd.DataFrame())
+    if not anos_disponiveis:
+        st.error(f"A base nao possui valores validos em {date_col} para montar o filtro de ano.")
+        return
 
-ultima_sem = es["sem_label"].dropna().max() if not es.empty else "N/D"
-ultima_atualizacao = metadata.get("generated_at", "N/D")
-fonte_dados = metadata.get("source", "desconhecida")
+    st.markdown(f'<div class="section-title">{tab_title}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-subtitle">{tab_subtitle}</div>', unsafe_allow_html=True)
 
-total_notif    = int(vg["total_notificacoes"].sum())
-total_conf     = int(vg["total_confirmados"].sum())
-total_mening   = int(vg["total_meningococica"].sum())
-total_sorob    = int(vg["total_sorogrupo_b"].sum())
-total_outro    = int(vg["total_outro_tipo"].sum())
-pct_conf       = total_conf   / total_notif  * 100 if total_notif  else 0
-pct_mening     = total_mening / total_conf   * 100 if total_conf   else 0
-pct_outro      = total_outro  / total_conf   * 100 if total_conf   else 0
-
-c1, c2, c3, c4 = st.columns(4)
-
-with c1:
-    st.markdown(f"""<div class="metric-card">
-        <div class="label">Total de Notificações</div>
-        <div class="value">{total_notif:,}</div>
-        <div class="sub">{formatar_yoy(yoy_cards["total_notificacoes"])}</div>
-        <div class="sub">Casos notificados no período</div>
-    </div>""", unsafe_allow_html=True)
-
-with c2:
-    st.markdown(f"""<div class="metric-card">
-        <div class="label">Casos Confirmados</div>
-        <div class="value" style="color:{LARANJA_CLARO}">{total_conf:,}</div>
-        <div class="sub">{formatar_yoy(yoy_cards["total_confirmados"])}</div>
-        <div class="sub">{pct_conf:.1f}% do total notificado</div>
-    </div>""", unsafe_allow_html=True)
-
-with c3:
-    st.markdown(f"""<div class="metric-card">
-        <div class="label">Meningite Meningocócica</div>
-        <div class="value" style="color:{AMARELO_ACC}">{total_mening:,}</div>
-        <div class="sub">{formatar_yoy(yoy_cards["total_meningococica"])}</div>
-        <div class="sub">{pct_mening:.1f}% dos confirmados</div>
-        <div class="sub-kpi">
-            <div class="sub-label">Sorogrupo B</div>
-            <div class="sub-value">{total_sorob:,}</div>
-        </div>
-    </div>""", unsafe_allow_html=True)
-
-with c4:
-    st.markdown(f"""<div class="metric-card">
-        <div class="label">Outros Tipos Confirmados</div>
-        <div class="value" style="color:{TEXTO_MUTED}">{total_outro:,}</div>
-        <div class="sub">{formatar_yoy(yoy_cards["total_outro_tipo"])}</div>
-        <div class="sub">{pct_outro:.1f}% dos confirmados</div>
-    </div>""", unsafe_allow_html=True)
-
-
-# ── Seção 1: Tabela por UF ────────────────────────────────────────────────────
-st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-st.markdown('<div class="section-title">Visão Geral por UF</div>', unsafe_allow_html=True)
-st.markdown('<div class="section-subtitle">Distribuição de casos por Unidade Federativa de notificação</div>', unsafe_allow_html=True)
-
-tabela_visao = vg.copy()
-tabela_visao["total_confirmados_pct"] = tabela_visao["total_confirmados"] / tabela_visao["total_notificacoes"] * 100
-tabela_visao["total_meningococica_pct"] = tabela_visao["total_meningococica"] / tabela_visao["total_confirmados"] * 100
-tabela_visao["total_sorogrupo_b_pct"] = tabela_visao["total_sorogrupo_b"] / tabela_visao["total_confirmados"] * 100
-tabela_visao["total_outro_tipo_pct"] = tabela_visao["total_outro_tipo"] / tabela_visao["total_confirmados"] * 100
-tabela_visao = tabela_visao[[
-    "uf_notificacao",
-    "total_notificacoes",
-    "total_confirmados",
-    "total_confirmados_pct",
-    "total_meningococica",
-    "total_meningococica_pct",
-    "total_sorogrupo_b",
-    "total_sorogrupo_b_pct",
-    "total_outro_tipo",
-    "total_outro_tipo_pct",
-]].sort_values("total_notificacoes", ascending=False)
-tabela_visao = tabela_visao.rename(columns={
-    "uf_notificacao": "UF",
-    "total_notificacoes": "Notificações",
-    "total_confirmados": "Confirmados",
-    "total_confirmados_pct": "% Confirmados",
-    "total_meningococica": "Meningocócica",
-    "total_meningococica_pct": "% Meningocócica",
-    "total_sorogrupo_b": "Sorogrupo B",
-    "total_sorogrupo_b_pct": "% Sorogrupo B",
-    "total_outro_tipo": "Outro Tipo",
-    "total_outro_tipo_pct": "% Outro Tipo",
-})
-
-st.dataframe(
-    tabela_visao,
-    use_container_width=True,
-    hide_index=True,
-    height=420,
-    column_config={
-        "UF": st.column_config.TextColumn("UF"),
-        "Notificações": st.column_config.NumberColumn("Notificações", format="%,d"),
-        "Confirmados": st.column_config.NumberColumn("Confirmados", format="%,d"),
-        "% Confirmados": st.column_config.NumberColumn("% Confirmados", format="%.1f%%"),
-        "Meningocócica": st.column_config.NumberColumn("Meningocócica", format="%,d"),
-        "% Meningocócica": st.column_config.NumberColumn("% Meningocócica", format="%.1f%%"),
-        "Sorogrupo B": st.column_config.NumberColumn("Sorogrupo B", format="%,d"),
-        "% Sorogrupo B": st.column_config.NumberColumn("% Sorogrupo B", format="%.1f%%"),
-        "Outro Tipo": st.column_config.NumberColumn("Outro Tipo", format="%,d"),
-        "% Outro Tipo": st.column_config.NumberColumn("% Outro Tipo", format="%.1f%%"),
-    },
-)
-
-
-# ── Seção 2: Evolução — Notificações vs Confirmados ───────────────────────────
-st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-st.markdown('<div class="section-title">Evolução de Casos por Semana Epidemiológica</div>', unsafe_allow_html=True)
-st.markdown('<div class="section-subtitle">Notificações e confirmações ao longo do tempo</div>', unsafe_allow_html=True)
-
-col_f1, _ = st.columns([2, 3])
-with col_f1:
-    st.markdown(f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem'>Estado de Notificação</div>", unsafe_allow_html=True)
-    ufs = ["Todos"] + sorted(es["uf_notificacao"].dropna().unique().tolist())
-    uf1 = st.selectbox("UF G1", ufs, index=0, label_visibility="collapsed", key="uf_g1")
-
-df_g1 = (
-    es.groupby("sem_label", as_index=False)
-    .agg(total_notificacoes=("total_notificacoes","sum"), total_confirmados=("total_confirmados","sum"))
-    if uf1 == "Todos"
-    else es[es["uf_notificacao"] == uf1].copy()
-)
-df_g1 = df_g1.sort_values("sem_label")
-
-fig1 = go.Figure()
-fig1.add_trace(go.Scatter(
-    x=df_g1["sem_label"], y=df_g1["total_notificacoes"],
-    name="Total Notificado", mode="lines+markers",
-    line=dict(color=LARANJA, width=2.5),
-    marker=dict(size=5), fill="tozeroy", fillcolor="rgba(232,96,10,0.07)",
-))
-fig1.add_trace(go.Scatter(
-    x=df_g1["sem_label"], y=df_g1["total_confirmados"],
-    name="Total Confirmado", mode="lines+markers",
-    line=dict(color=AZUL_LINHA, width=2.5, dash="dot"),
-    marker=dict(size=5, color=AZUL_LINHA),
-))
-fig1 = layout_plotly(fig1, height=360)
-fig1.update_xaxes(tickangle=-45)
-st.plotly_chart(fig1, width="stretch")
-
-
-# ── Seção 3: Evolução — Meningocócica vs Sorogrupo B ─────────────────────────
-st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-st.markdown('<div class="section-title">Meningite Meningocócica e Sorogrupo B por Semana</div>', unsafe_allow_html=True)
-st.markdown('<div class="section-subtitle">Casos confirmados de Meningite Meningocócica e Sorogrupo B</div>', unsafe_allow_html=True)
-
-col_f2, _ = st.columns([2, 3])
-with col_f2:
-    st.markdown(f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem'>Estado de Notificação</div>", unsafe_allow_html=True)
-    uf2 = st.selectbox("UF G2", ufs, index=0, label_visibility="collapsed", key="uf_g2")
-
-df_g2 = (
-    es.groupby("sem_label", as_index=False)
-    .agg(total_meningococica=("total_meningococica","sum"), total_sorogrupo_b=("total_sorogrupo_b","sum"))
-    if uf2 == "Todos"
-    else es[es["uf_notificacao"] == uf2].copy()
-)
-df_g2 = df_g2.sort_values("sem_label")
-
-fig2 = go.Figure()
-fig2.add_trace(go.Scatter(
-    x=df_g2["sem_label"], y=df_g2["total_meningococica"],
-    name="Meningite Meningocócica", mode="lines+markers",
-    line=dict(color=AMARELO_ACC, width=2.5),
-    marker=dict(size=5, color=AMARELO_ACC),
-    fill="tozeroy", fillcolor="rgba(245,184,65,0.07)",
-))
-fig2.add_trace(go.Scatter(
-    x=df_g2["sem_label"], y=df_g2["total_sorogrupo_b"],
-    name="Sorogrupo B", mode="lines+markers",
-    line=dict(color=VERDE_LINHA, width=2.5, dash="dot"),
-    marker=dict(size=5, color=VERDE_LINHA),
-))
-fig2 = layout_plotly(fig2, height=360)
-fig2.update_xaxes(tickangle=-45)
-st.plotly_chart(fig2, width="stretch")
-
-
-# ── Seção 4: Mapa de Casos ────────────────────────────────────────────────────
-st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-st.markdown('<div class="section-title">Mapa de Casos</div>', unsafe_allow_html=True)
-st.markdown('<div class="section-subtitle">Volume absoluto de casos confirmados por UF</div>', unsafe_allow_html=True)
-
-col_fm_tipo, col_fm_criterio, _ = st.columns([2, 2, 1])
-with col_fm_tipo:
-    st.markdown(f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem'>Tipo de Caso</div>", unsafe_allow_html=True)
-    tipo_mapa = st.selectbox(
-        "Tipo Mapa",
-        options=["Total de Casos Notificados", "Total de Casos Confirmados", "Casos Confirmados de Meningite Meningocócica", "Casos Confirmados de Meningite Sorogrupo B"],
-        index=0,
-        label_visibility="collapsed",
-        key="tipo_mapa",
-    )
-with col_fm_criterio:
-    st.markdown(f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem'>Criterio de Cor</div>", unsafe_allow_html=True)
-    criterio_mapa = st.selectbox(
-        "Criterio Mapa",
-        options=["Valor absoluto", "Crescimento 2026 x 2025"],
-        index=0,
-        label_visibility="collapsed",
-        key="criterio_mapa",
-    )
-
-col_mapa_map = {
-    "Total de Casos Notificados":                       "total_notificacoes",
-    "Total de Casos Confirmados":                       "total_confirmados",
-    "Casos Confirmados de Meningite Meningocócica":     "total_meningococica",
-    "Casos Confirmados de Meningite Sorogrupo B":       "total_sorogrupo_b",
-}
-coluna_mapa = col_mapa_map[tipo_mapa]
-
-if criterio_mapa == "Crescimento 2026 x 2025":
-    mapa_df = calcular_crescimento_uf(base_uf, coluna_mapa, semana_limite_yoy)
-    mapa_df["nome_uf"] = mapa_df["uf_notificacao"].map(SIGLA_PARA_NOME)
-    mapa_df = mapa_df.dropna(subset=["nome_uf"])
-    cor_mapa = "crescimento_pct"
-    titulo_barra_mapa = "Crescimento (%)"
-    escala_mapa = [
-        [0.0, "#050505"],
-        [0.35, "#3A1E11"],
-        [0.7, "#9B4315"],
-        [1.0, "#FF4500"],
-    ]
-    hover_mapa = {
-        "crescimento_pct": ":.1f",
-        "valor_2026": True,
-        "valor_2025": True,
-        "nome_uf": False,
-    }
-    labels_mapa = {
-        "crescimento_pct": "Crescimento (%)",
-        "valor_2026": "2026",
-        "valor_2025": "2025",
-    }
-else:
-    mapa_df = vg.copy()
-    mapa_df["nome_uf"] = mapa_df["uf_notificacao"].map(SIGLA_PARA_NOME)
-    mapa_df = mapa_df.dropna(subset=["nome_uf"])
-    cor_mapa = coluna_mapa
-    titulo_barra_mapa = "Casos"
-    escala_mapa = [
-        [0.0,  "#1F0F08"],
-        [0.25, "#6B3A1F"],
-        [0.5,  "#C45A1A"],
-        [0.75, "#E8600A"],
-        [1.0,  "#FF4500"],
-    ]
-    hover_mapa = {coluna_mapa: True, "nome_uf": False}
-    labels_mapa = {coluna_mapa: "Casos"}
-
-col_map, col_leg = st.columns([4, 1])
-with col_map:
-    if geojson:
-        fig_mapa = px.choropleth(
-            mapa_df,
-            geojson=geojson,
-            locations="nome_uf",
-            featureidkey="properties.name",
-            color=cor_mapa,
-            color_continuous_scale=escala_mapa,
-            hover_name="nome_uf",
-            hover_data=hover_mapa,
-            labels=labels_mapa,
+    col_ano, col_uf, _ = st.columns([1, 1, 2])
+    with col_ano:
+        st.markdown(
+            f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
+            f"letter-spacing:0.08em;margin-bottom:0.3rem'>Ano da {periodo_label}</div>",
+            unsafe_allow_html=True,
         )
-        fig_mapa.update_geos(fitbounds="locations", visible=False, bgcolor="rgba(0,0,0,0)")
-        fig_mapa.update_layout(
-            height=480,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(family="Inter", color=TEXTO_CLARO),
-            margin=dict(l=0, r=0, t=10, b=0),
-            coloraxis_colorbar=dict(
-                title=titulo_barra_mapa,
-                tickfont=dict(color=TEXTO_CLARO),
-                title_font=dict(color=TEXTO_CLARO),
-                bgcolor="rgba(0,0,0,0)",
-                bordercolor=CINZA_LINHA,
-            ),
+        opcao_ano = st.selectbox(
+            "Ano",
+            options=["Todos"] + [str(ano) for ano in anos_disponiveis],
+            index=1 if "2026" in [str(ano) for ano in anos_disponiveis] else 0,
+            label_visibility="collapsed",
+            key=f"{tab_key}_filtro_ano",
         )
-        st.plotly_chart(fig_mapa, width="stretch")
+    with col_uf:
+        st.markdown(
+            f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
+            f"letter-spacing:0.08em;margin-bottom:0.3rem'>UF de Notificação</div>",
+            unsafe_allow_html=True,
+        )
+        opcao_uf = st.selectbox(
+            "UF",
+            options=["Todos"] + ufs_disponiveis,
+            index=0,
+            label_visibility="collapsed",
+            key=f"{tab_key}_filtro_uf",
+        )
+
+    ano_selecionado = None if opcao_ano == "Todos" else int(opcao_ano)
+    uf_selecionada = None if opcao_uf == "Todos" else opcao_uf
+
+    base_uf = base_temporal if uf_selecionada is None else base_temporal[base_temporal["uf_notificacao"] == uf_selecionada].copy()
+    base_filtrada = base_uf if ano_selecionado is None else base_uf[base_uf[date_col].dt.year == ano_selecionado].copy()
+
+    if base_filtrada.empty:
+        st.warning("Nao ha registros para o filtro selecionado.")
+        return
+
+    dados = gerar_tabelas_dashboard(base_filtrada)
+    semana_limite_yoy = ultima_semana_completa(base_temporal, date_col=date_col, sem_label_col="sem_label")
+    yoy_cards = calcular_yoy_periodo(base_uf, semana_limite_yoy, date_col=date_col, sem_label_col="sem_label")
+
+    vg = dados.get("visao_geral", pd.DataFrame())
+    es = dados.get("evolucao_semanal", pd.DataFrame())
+    fe = dados.get("faixa_etaria", pd.DataFrame())
+    sx = dados.get("sexo", pd.DataFrame())
+    sin = dados.get("sintomas", pd.DataFrame())
+    evo = dados.get("evolucao", pd.DataFrame())
+
+    total_notif = int(vg["total_notificacoes"].sum()) if not vg.empty else 0
+    total_conf = int(vg["total_confirmados"].sum()) if not vg.empty else 0
+    total_mening = int(vg["total_meningococica"].sum()) if not vg.empty else 0
+    total_sorob = int(vg["total_sorogrupo_b"].sum()) if not vg.empty else 0
+    total_outro = int(vg["total_outro_tipo"].sum()) if not vg.empty else 0
+    pct_conf = total_conf / total_notif * 100 if total_notif else 0
+    pct_mening = total_mening / total_conf * 100 if total_conf else 0
+    pct_outro = total_outro / total_conf * 100 if total_conf else 0
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.markdown(f"""<div class="metric-card">
+            <div class="label">Total de Notificações</div>
+            <div class="value">{total_notif:,}</div>
+            <div class="sub">{formatar_yoy(yoy_cards["total_notificacoes"])}</div>
+            <div class="sub">Casos notificados no período</div>
+        </div>""", unsafe_allow_html=True)
+
+    with c2:
+        st.markdown(f"""<div class="metric-card">
+            <div class="label">Casos Confirmados</div>
+            <div class="value" style="color:{LARANJA_CLARO}">{total_conf:,}</div>
+            <div class="sub">{formatar_yoy(yoy_cards["total_confirmados"])}</div>
+            <div class="sub">{pct_conf:.1f}% do total notificado</div>
+        </div>""", unsafe_allow_html=True)
+
+    with c3:
+        st.markdown(f"""<div class="metric-card">
+            <div class="label">Meningite Meningocócica</div>
+            <div class="value" style="color:{AMARELO_ACC}">{total_mening:,}</div>
+            <div class="sub">{formatar_yoy(yoy_cards["total_meningococica"])}</div>
+            <div class="sub">{pct_mening:.1f}% dos confirmados</div>
+            <div class="sub-kpi">
+                <div class="sub-label">Sorogrupo B</div>
+                <div class="sub-value">{total_sorob:,}</div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    with c4:
+        st.markdown(f"""<div class="metric-card">
+            <div class="label">Outros Tipos Confirmados</div>
+            <div class="value" style="color:{TEXTO_MUTED}">{total_outro:,}</div>
+            <div class="sub">{formatar_yoy(yoy_cards["total_outro_tipo"])}</div>
+            <div class="sub">{pct_outro:.1f}% dos confirmados</div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Visão Geral por UF</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Distribuição de casos por Unidade Federativa de notificação</div>', unsafe_allow_html=True)
+
+    tabela_visao = vg.copy()
+    if not tabela_visao.empty:
+        tabela_visao["total_confirmados_pct"] = tabela_visao["total_confirmados"] / tabela_visao["total_notificacoes"] * 100
+        tabela_visao["total_meningococica_pct"] = tabela_visao["total_meningococica"] / tabela_visao["total_confirmados"] * 100
+        tabela_visao["total_sorogrupo_b_pct"] = tabela_visao["total_sorogrupo_b"] / tabela_visao["total_confirmados"] * 100
+        tabela_visao["total_outro_tipo_pct"] = tabela_visao["total_outro_tipo"] / tabela_visao["total_confirmados"] * 100
+        tabela_visao = tabela_visao[[
+            "uf_notificacao",
+            "total_notificacoes",
+            "total_confirmados",
+            "total_confirmados_pct",
+            "total_meningococica",
+            "total_meningococica_pct",
+            "total_sorogrupo_b",
+            "total_sorogrupo_b_pct",
+            "total_outro_tipo",
+            "total_outro_tipo_pct",
+        ]].sort_values("total_notificacoes", ascending=False)
+        tabela_visao = tabela_visao.rename(columns={
+            "uf_notificacao": "UF",
+            "total_notificacoes": "Notificações",
+            "total_confirmados": "Confirmados",
+            "total_confirmados_pct": "% Confirmados",
+            "total_meningococica": "Meningocócica",
+            "total_meningococica_pct": "% Meningocócica",
+            "total_sorogrupo_b": "Sorogrupo B",
+            "total_sorogrupo_b_pct": "% Sorogrupo B",
+            "total_outro_tipo": "Outro Tipo",
+            "total_outro_tipo_pct": "% Outro Tipo",
+        })
+
+    st.dataframe(
+        tabela_visao,
+        use_container_width=True,
+        hide_index=True,
+        height=420,
+        column_config={
+            "UF": st.column_config.TextColumn("UF"),
+            "Notificações": st.column_config.NumberColumn("Notificações", format="%,d"),
+            "Confirmados": st.column_config.NumberColumn("Confirmados", format="%,d"),
+            "% Confirmados": st.column_config.NumberColumn("% Confirmados", format="%.1f%%"),
+            "Meningocócica": st.column_config.NumberColumn("Meningocócica", format="%,d"),
+            "% Meningocócica": st.column_config.NumberColumn("% Meningocócica", format="%.1f%%"),
+            "Sorogrupo B": st.column_config.NumberColumn("Sorogrupo B", format="%,d"),
+            "% Sorogrupo B": st.column_config.NumberColumn("% Sorogrupo B", format="%.1f%%"),
+            "Outro Tipo": st.column_config.NumberColumn("Outro Tipo", format="%,d"),
+            "% Outro Tipo": st.column_config.NumberColumn("% Outro Tipo", format="%.1f%%"),
+        },
+    )
+
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title">Evolução de Casos por Semana - {periodo_label}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Notificações e confirmações ao longo do tempo</div>', unsafe_allow_html=True)
+
+    col_f1, _ = st.columns([2, 3])
+    with col_f1:
+        st.markdown(
+            f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
+            f"letter-spacing:0.08em;margin-bottom:0.3rem'>Estado de Notificação</div>",
+            unsafe_allow_html=True,
+        )
+        ufs = ["Todos"] + sorted(es["uf_notificacao"].dropna().unique().tolist())
+        uf1 = st.selectbox("UF G1", ufs, index=0, label_visibility="collapsed", key=f"{tab_key}_uf_g1")
+
+    df_g1 = (
+        es.groupby("sem_label", as_index=False)
+        .agg(total_notificacoes=("total_notificacoes", "sum"), total_confirmados=("total_confirmados", "sum"))
+        if uf1 == "Todos"
+        else es[es["uf_notificacao"] == uf1].copy()
+    )
+    df_g1 = df_g1.sort_values("sem_label")
+
+    fig1 = go.Figure()
+    fig1.add_trace(go.Scatter(
+        x=df_g1["sem_label"], y=df_g1["total_notificacoes"],
+        name="Total Notificado", mode="lines+markers",
+        line=dict(color=LARANJA, width=2.5),
+        marker=dict(size=5), fill="tozeroy", fillcolor="rgba(232,96,10,0.07)",
+    ))
+    fig1.add_trace(go.Scatter(
+        x=df_g1["sem_label"], y=df_g1["total_confirmados"],
+        name="Total Confirmado", mode="lines+markers",
+        line=dict(color=AZUL_LINHA, width=2.5, dash="dot"),
+        marker=dict(size=5, color=AZUL_LINHA),
+    ))
+    fig1 = layout_plotly(fig1, height=360)
+    fig1.update_xaxes(tickangle=-45)
+    st.plotly_chart(fig1, width="stretch")
+
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title">Meningite Meningocócica e Sorogrupo B por Semana - {periodo_label}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Casos confirmados de Meningite Meningocócica e Sorogrupo B</div>', unsafe_allow_html=True)
+
+    col_f2, _ = st.columns([2, 3])
+    with col_f2:
+        st.markdown(
+            f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
+            f"letter-spacing:0.08em;margin-bottom:0.3rem'>Estado de Notificação</div>",
+            unsafe_allow_html=True,
+        )
+        uf2 = st.selectbox("UF G2", ufs, index=0, label_visibility="collapsed", key=f"{tab_key}_uf_g2")
+
+    df_g2 = (
+        es.groupby("sem_label", as_index=False)
+        .agg(total_meningococica=("total_meningococica", "sum"), total_sorogrupo_b=("total_sorogrupo_b", "sum"))
+        if uf2 == "Todos"
+        else es[es["uf_notificacao"] == uf2].copy()
+    )
+    df_g2 = df_g2.sort_values("sem_label")
+
+    fig2 = go.Figure()
+    fig2.add_trace(go.Scatter(
+        x=df_g2["sem_label"], y=df_g2["total_meningococica"],
+        name="Meningite Meningocócica", mode="lines+markers",
+        line=dict(color=AMARELO_ACC, width=2.5),
+        marker=dict(size=5, color=AMARELO_ACC),
+        fill="tozeroy", fillcolor="rgba(245,184,65,0.07)",
+    ))
+    fig2.add_trace(go.Scatter(
+        x=df_g2["sem_label"], y=df_g2["total_sorogrupo_b"],
+        name="Sorogrupo B", mode="lines+markers",
+        line=dict(color=VERDE_LINHA, width=2.5, dash="dot"),
+        marker=dict(size=5, color=VERDE_LINHA),
+    ))
+    fig2 = layout_plotly(fig2, height=360)
+    fig2.update_xaxes(tickangle=-45)
+    st.plotly_chart(fig2, width="stretch")
+
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Mapa de Casos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Volume absoluto de casos confirmados por UF</div>', unsafe_allow_html=True)
+
+    col_fm_tipo, col_fm_criterio, _ = st.columns([2, 2, 1])
+    with col_fm_tipo:
+        st.markdown(
+            f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
+            f"letter-spacing:0.08em;margin-bottom:0.3rem'>Tipo de Caso</div>",
+            unsafe_allow_html=True,
+        )
+        tipo_mapa = st.selectbox(
+            "Tipo Mapa",
+            options=[
+                "Total de Casos Notificados",
+                "Total de Casos Confirmados",
+                "Casos Confirmados de Meningite Meningocócica",
+                "Casos Confirmados de Meningite Sorogrupo B",
+            ],
+            index=0,
+            label_visibility="collapsed",
+            key=f"{tab_key}_tipo_mapa",
+        )
+    with col_fm_criterio:
+        st.markdown(
+            f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
+            f"letter-spacing:0.08em;margin-bottom:0.3rem'>Criterio de Cor</div>",
+            unsafe_allow_html=True,
+        )
+        criterio_mapa = st.selectbox(
+            "Criterio Mapa",
+            options=["Valor absoluto", "Crescimento 2026 x 2025"],
+            index=0,
+            label_visibility="collapsed",
+            key=f"{tab_key}_criterio_mapa",
+        )
+
+    col_mapa_map = {
+        "Total de Casos Notificados": "total_notificacoes",
+        "Total de Casos Confirmados": "total_confirmados",
+        "Casos Confirmados de Meningite Meningocócica": "total_meningococica",
+        "Casos Confirmados de Meningite Sorogrupo B": "total_sorogrupo_b",
+    }
+    coluna_mapa = col_mapa_map[tipo_mapa]
+
+    if criterio_mapa == "Crescimento 2026 x 2025":
+        mapa_df = calcular_crescimento_uf(base_uf, coluna_mapa, semana_limite_yoy, date_col=date_col, sem_label_col="sem_label")
+        mapa_df["nome_uf"] = mapa_df["uf_notificacao"].map(SIGLA_PARA_NOME)
+        mapa_df = mapa_df.dropna(subset=["nome_uf"])
+        cor_mapa = "crescimento_pct"
+        titulo_barra_mapa = "Crescimento (%)"
+        escala_mapa = [
+            [0.0, "#050505"],
+            [0.35, "#3A1E11"],
+            [0.7, "#9B4315"],
+            [1.0, "#FF4500"],
+        ]
+        hover_mapa = {
+            "crescimento_pct": ":.1f",
+            "valor_2026": True,
+            "valor_2025": True,
+            "nome_uf": False,
+        }
+        labels_mapa = {
+            "crescimento_pct": "Crescimento (%)",
+            "valor_2026": "2026",
+            "valor_2025": "2025",
+        }
     else:
-        st.warning("Não foi possível carregar o GeoJSON. Verifique a conexão.")
+        mapa_df = vg.copy()
+        mapa_df["nome_uf"] = mapa_df["uf_notificacao"].map(SIGLA_PARA_NOME)
+        mapa_df = mapa_df.dropna(subset=["nome_uf"])
+        cor_mapa = coluna_mapa
+        titulo_barra_mapa = "Casos"
+        escala_mapa = [
+            [0.0, "#1F0F08"],
+            [0.25, "#6B3A1F"],
+            [0.5, "#C45A1A"],
+            [0.75, "#E8600A"],
+            [1.0, "#FF4500"],
+        ]
+        hover_mapa = {coluna_mapa: True, "nome_uf": False}
+        labels_mapa = {coluna_mapa: "Casos"}
 
-with col_leg:
-    legenda_subtitulo = "Crescimento vs 2025" if criterio_mapa == "Crescimento 2026 x 2025" else "Casos absolutos"
-    st.markdown(f"""
-    <div class="legend-box" style="margin-top:3rem">
-        <div style="font-family:Syne,sans-serif;font-size:0.8rem;font-weight:700;
-                    color:{TEXTO_CLARO};margin-bottom:0.8rem">
-            Volume<br><span style="font-size:0.68rem;color:{TEXTO_MUTED}">{legenda_subtitulo}</span>
+    col_map, col_leg = st.columns([4, 1])
+    with col_map:
+        if geojson:
+            fig_mapa = px.choropleth(
+                mapa_df,
+                geojson=geojson,
+                locations="nome_uf",
+                featureidkey="properties.name",
+                color=cor_mapa,
+                color_continuous_scale=escala_mapa,
+                hover_name="nome_uf",
+                hover_data=hover_mapa,
+                labels=labels_mapa,
+            )
+            fig_mapa.update_geos(fitbounds="locations", visible=False, bgcolor="rgba(0,0,0,0)")
+            fig_mapa.update_layout(
+                height=480,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="Inter", color=TEXTO_CLARO),
+                margin=dict(l=0, r=0, t=10, b=0),
+                coloraxis_colorbar=dict(
+                    title=titulo_barra_mapa,
+                    tickfont=dict(color=TEXTO_CLARO),
+                    title_font=dict(color=TEXTO_CLARO),
+                    bgcolor="rgba(0,0,0,0)",
+                    bordercolor=CINZA_LINHA,
+                ),
+            )
+            st.plotly_chart(fig_mapa, width="stretch")
+        else:
+            st.warning("Nao foi possivel carregar o GeoJSON. Verifique a conexao.")
+
+    with col_leg:
+        legenda_subtitulo = "Crescimento vs 2025" if criterio_mapa == "Crescimento 2026 x 2025" else "Casos absolutos"
+        st.markdown(f"""
+        <div class="legend-box" style="margin-top:3rem">
+            <div style="font-family:Syne,sans-serif;font-size:0.8rem;font-weight:700;
+                        color:{TEXTO_CLARO};margin-bottom:0.8rem">
+                Volume<br><span style="font-size:0.68rem;color:{TEXTO_MUTED}">{legenda_subtitulo}</span>
+            </div>
+            <div class="legend-item"><div class="legend-dot" style="background:#FF4500"></div>Muito alto</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#E8600A"></div>Alto</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#C45A1A"></div>Médio</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#6B3A1F"></div>Baixo</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#1F0F08"></div>Muito baixo</div>
         </div>
-        <div class="legend-item"><div class="legend-dot" style="background:#FF4500"></div>Muito alto</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#E8600A"></div>Alto</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#C45A1A"></div>Médio</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#6B3A1F"></div>Baixo</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#1F0F08"></div>Muito baixo</div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Perfil do Paciente</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Distribuição demográfica e clínica dos casos</div>', unsafe_allow_html=True)
+
+    col_fp, _ = st.columns([2, 3])
+    with col_fp:
+        st.markdown(
+            f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
+            f"letter-spacing:0.08em;margin-bottom:0.3rem'>Tipo de Caso</div>",
+            unsafe_allow_html=True,
+        )
+        tipo_perfil = st.selectbox(
+            "Tipo Perfil",
+            options=[
+                "Todos os Notificados",
+                "Casos Confirmados",
+                "Confirmados Meningite Meningocócica",
+                "Confirmados Sorogrupo B",
+            ],
+            index=1,
+            label_visibility="collapsed",
+            key=f"{tab_key}_tipo_perfil",
+        )
+
+    sufixo_perfil = {
+        "Todos os Notificados": "todos",
+        "Casos Confirmados": "confirmados",
+        "Confirmados Meningite Meningocócica": "meningococica",
+        "Confirmados Sorogrupo B": "sorogrupo_b",
+    }[tipo_perfil]
+
+    fe = dados.get(f"faixa_etaria_{sufixo_perfil}", pd.DataFrame())
+    sx = dados.get(f"sexo_{sufixo_perfil}", pd.DataFrame())
+    sin = dados.get(f"sintomas_{sufixo_perfil}", pd.DataFrame())
+    evo = dados.get(f"evolucao_{sufixo_perfil}", pd.DataFrame())
+
+    col_fe, col_sx = st.columns([3, 2])
+
+    with col_fe:
+        st.markdown(
+            f"<div style='font-size:0.8rem;color:{TEXTO_MUTED};margin-bottom:0.5rem'>Casos por Faixa Etária</div>",
+            unsafe_allow_html=True,
+        )
+        if not fe.empty:
+            fe_plot = fe.copy()
+            if "faixa_etaria" not in fe_plot.columns:
+                fe_plot = fe_plot.rename(columns={fe_plot.columns[0]: "faixa_etaria", fe_plot.columns[1]: "total"})
+            fig_fe = px.bar(
+                fe_plot, x="faixa_etaria", y="total",
+                color_discrete_sequence=[LARANJA],
+                labels={"faixa_etaria": "Faixa Etária", "total": "Casos"},
+            )
+            fig_fe.update_traces(marker_line_width=0)
+            fig_fe = layout_plotly(fig_fe, height=300)
+            st.plotly_chart(fig_fe, width="stretch")
+
+    with col_sx:
+        st.markdown(
+            f"<div style='font-size:0.8rem;color:{TEXTO_MUTED};margin-bottom:0.5rem'>Casos por Sexo</div>",
+            unsafe_allow_html=True,
+        )
+        if not sx.empty:
+            sx_plot = sx.copy()
+            if "sexo" not in sx_plot.columns:
+                sx_plot = sx_plot.rename(columns={sx_plot.columns[0]: "sexo", sx_plot.columns[1]: "total"})
+            sx_plot = sx_plot[sx_plot["sexo"] != "Ignorado"]
+            total_gen = int(sx_plot["total"].sum())
+            fig_sx = go.Figure(go.Pie(
+                labels=sx_plot["sexo"], values=sx_plot["total"],
+                hole=0.62,
+                marker=dict(colors=[LARANJA, LARANJA_CLARO], line=dict(color=FUNDO_ESCURO, width=2)),
+                textfont=dict(color="#fff", size=11),
+                hovertemplate="%{label}: %{value:,} (%{percent})<extra></extra>",
+            ))
+            fig_sx.update_layout(
+                height=300, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="Inter", color=TEXTO_CLARO),
+                margin=dict(l=0, r=0, t=10, b=10),
+                legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color=TEXTO_CLARO, size=11)),
+                annotations=[dict(
+                    text=f"<b>{total_gen:,}</b>", x=0.5, y=0.5,
+                    font=dict(size=16, color=TEXTO_CLARO, family="Syne"), showarrow=False,
+                )],
+            )
+            st.plotly_chart(fig_sx, width="stretch")
+
+    col_sin, col_evo = st.columns(2)
+
+    with col_sin:
+        st.markdown(
+            f"<div style='font-size:0.8rem;color:{TEXTO_MUTED};margin-bottom:0.5rem'>Top 5 Sinais e Sintomas</div>",
+            unsafe_allow_html=True,
+        )
+        if not sin.empty:
+            sin_plot = sin.copy()
+            if "sintoma" not in sin_plot.columns:
+                sin_plot = sin_plot.rename(columns={sin_plot.columns[0]: "sintoma", sin_plot.columns[1]: "total"})
+            sin_plot = sin_plot.sort_values("total", ascending=True)
+            fig_sin = px.bar(
+                sin_plot, x="total", y="sintoma", orientation="h",
+                color_discrete_sequence=[LARANJA],
+                labels={"sintoma": "", "total": "Casos"},
+            )
+            fig_sin.update_traces(marker_line_width=0)
+            fig_sin = layout_plotly(fig_sin, height=300)
+            st.plotly_chart(fig_sin, width="stretch")
+
+    with col_evo:
+        st.markdown(
+            f"<div style='font-size:0.8rem;color:{TEXTO_MUTED};margin-bottom:0.5rem'>Evolução dos Casos</div>",
+            unsafe_allow_html=True,
+        )
+        if not evo.empty:
+            evo_plot = evo.copy()
+            if "evolucao" not in evo_plot.columns:
+                evo_plot = evo_plot.rename(columns={evo_plot.columns[0]: "evolucao", evo_plot.columns[1]: "total"})
+            evo_plot = evo_plot.sort_values("total", ascending=True)
+            cores_evo = {
+                "Alta": VERDE_LINHA,
+                "Óbito por Meningite": LARANJA,
+                "Óbito por Outra Causa": AMARELO_ACC,
+                "Ignorado": TEXTO_MUTED,
+            }
+            fig_evo = px.bar(
+                evo_plot, x="total", y="evolucao", orientation="h",
+                color="evolucao", color_discrete_map=cores_evo,
+                labels={"evolucao": "", "total": "Casos"},
+            )
+            fig_evo.update_traces(marker_line_width=0)
+            fig_evo = layout_plotly(fig_evo, height=300)
+            fig_evo.update_layout(showlegend=False)
+            st.plotly_chart(fig_evo, width="stretch")
+
+    st.markdown(f"""
+    <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid {CINZA_LINHA};
+                text-align:center;font-size:0.7rem;color:{TEXTO_MUTED}">
+        Dados: SINAN / Ministério da Saúde · {ultima_atualizacao}
     </div>
     """, unsafe_allow_html=True)
 
 
-# ── Seção 5: Perfil do Paciente ───────────────────────────────────────────────
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-st.markdown('<div class="section-title">Perfil do Paciente</div>', unsafe_allow_html=True)
-st.markdown('<div class="section-subtitle">Distribuição demográfica e clínica dos casos</div>', unsafe_allow_html=True)
+aba_sintomas, aba_notificacao = st.tabs(["Sintomas", "Notificação"])
 
-col_fp, _ = st.columns([2, 3])
-with col_fp:
-    st.markdown(f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
-                f"letter-spacing:0.08em;margin-bottom:0.3rem'>Tipo de Caso</div>",
-                unsafe_allow_html=True)
-    tipo_perfil = st.selectbox(
-        "Tipo Perfil",
-        options=["Todos os Notificados", "Casos Confirmados",
-                 "Confirmados Meningite Meningocócica", "Confirmados Sorogrupo B"],
-        index=1,
-        label_visibility="collapsed",
-        key="tipo_perfil",
+with aba_sintomas:
+    render_dashboard_tab(
+        base,
+        date_col="DT_SIN_PRI",
+        sem_label_col="sem_label",
+        tab_key="sintomas",
+        tab_title="Leitura por sintomas",
+        tab_subtitle="Semana epidemiológica baseada na data dos primeiros sintomas",
+        periodo_label="Sintomas",
     )
 
-sufixo_perfil = {
-    "Todos os Notificados":                "todos",
-    "Casos Confirmados":                   "confirmados",
-    "Confirmados Meningite Meningocócica": "meningococica",
-    "Confirmados Sorogrupo B":             "sorogrupo_b",
-}[tipo_perfil]
-
-fe  = dados.get(f"faixa_etaria_{sufixo_perfil}", pd.DataFrame())
-sx  = dados.get(f"sexo_{sufixo_perfil}",         pd.DataFrame())
-sin = dados.get(f"sintomas_{sufixo_perfil}",     pd.DataFrame())
-evo = dados.get(f"evolucao_{sufixo_perfil}",     pd.DataFrame())
-
-# Linha 1: Faixa etária + Sexo
-col_fe, col_sx = st.columns([3, 2])
-
-with col_fe:
-    st.markdown(f"<div style='font-size:0.8rem;color:{TEXTO_MUTED};margin-bottom:0.5rem'>"
-                "Casos por Faixa Etária</div>", unsafe_allow_html=True)
-    if not fe.empty:
-        fe_plot = fe.copy()
-        if "faixa_etaria" not in fe_plot.columns:
-            fe_plot = fe_plot.rename(columns={fe_plot.columns[0]: "faixa_etaria",
-                                              fe_plot.columns[1]: "total"})
-        fig_fe = px.bar(
-            fe_plot, x="faixa_etaria", y="total",
-            color_discrete_sequence=[LARANJA],
-            labels={"faixa_etaria": "Faixa Etária", "total": "Casos"},
-        )
-        fig_fe.update_traces(marker_line_width=0)
-        fig_fe = layout_plotly(fig_fe, height=300)
-        st.plotly_chart(fig_fe, width="stretch")
-
-with col_sx:
-    st.markdown(f"<div style='font-size:0.8rem;color:{TEXTO_MUTED};margin-bottom:0.5rem'>"
-                "Casos por Sexo</div>", unsafe_allow_html=True)
-    if not sx.empty:
-        sx_plot = sx.copy()
-        if "sexo" not in sx_plot.columns:
-            sx_plot = sx_plot.rename(columns={sx_plot.columns[0]: "sexo",
-                                              sx_plot.columns[1]: "total"})
-        sx_plot   = sx_plot[sx_plot["sexo"] != "Ignorado"]
-        total_gen = int(sx_plot["total"].sum())
-        fig_sx = go.Figure(go.Pie(
-            labels=sx_plot["sexo"], values=sx_plot["total"],
-            hole=0.62,
-            marker=dict(colors=[LARANJA, LARANJA_CLARO],
-                        line=dict(color=FUNDO_ESCURO, width=2)),
-            textfont=dict(color="#fff", size=11),
-            hovertemplate="%{label}: %{value:,} (%{percent})<extra></extra>",
-        ))
-        fig_sx.update_layout(
-            height=300, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(family="Inter", color=TEXTO_CLARO),
-            margin=dict(l=0, r=0, t=10, b=10),
-            legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color=TEXTO_CLARO, size=11)),
-            annotations=[dict(
-                text=f"<b>{total_gen:,}</b>", x=0.5, y=0.5,
-                font=dict(size=16, color=TEXTO_CLARO, family="Syne"), showarrow=False,
-            )],
-        )
-        st.plotly_chart(fig_sx, width="stretch")
-
-# Linha 2: Sintomas + Evolução
-col_sin, col_evo = st.columns(2)
-
-with col_sin:
-    st.markdown(f"<div style='font-size:0.8rem;color:{TEXTO_MUTED};margin-bottom:0.5rem'>"
-                "Top 5 Sinais e Sintomas</div>", unsafe_allow_html=True)
-    if not sin.empty:
-        sin_plot = sin.copy()
-        if "sintoma" not in sin_plot.columns:
-            sin_plot = sin_plot.rename(columns={sin_plot.columns[0]: "sintoma",
-                                                sin_plot.columns[1]: "total"})
-        sin_plot = sin_plot.sort_values("total", ascending=True)
-        fig_sin = px.bar(
-            sin_plot, x="total", y="sintoma", orientation="h",
-            color_discrete_sequence=[LARANJA],
-            labels={"sintoma": "", "total": "Casos"},
-        )
-        fig_sin.update_traces(marker_line_width=0)
-        fig_sin = layout_plotly(fig_sin, height=300)
-        st.plotly_chart(fig_sin, width="stretch")
-
-with col_evo:
-    st.markdown(f"<div style='font-size:0.8rem;color:{TEXTO_MUTED};margin-bottom:0.5rem'>"
-                "Evolução dos Casos</div>", unsafe_allow_html=True)
-    if not evo.empty:
-        evo_plot = evo.copy()
-        if "evolucao" not in evo_plot.columns:
-            evo_plot = evo_plot.rename(columns={evo_plot.columns[0]: "evolucao",
-                                                evo_plot.columns[1]: "total"})
-        evo_plot = evo_plot.sort_values("total", ascending=True)
-        cores_evo = {
-            "Alta":                  VERDE_LINHA,
-            "Óbito por Meningite":   LARANJA,
-            "Óbito por Outra Causa": AMARELO_ACC,
-            "Ignorado":              TEXTO_MUTED,
-        }
-        fig_evo = px.bar(
-            evo_plot, x="total", y="evolucao", orientation="h",
-            color="evolucao", color_discrete_map=cores_evo,
-            labels={"evolucao": "", "total": "Casos"},
-        )
-        fig_evo.update_traces(marker_line_width=0)
-        fig_evo = layout_plotly(fig_evo, height=300)
-        fig_evo.update_layout(showlegend=False)
-        st.plotly_chart(fig_evo, width="stretch")
-
-
-# ── Rodapé ────────────────────────────────────────────────────────────────────
-st.markdown(f"""
-<div style="margin-top:2rem;padding-top:1rem;border-top:1px solid {CINZA_LINHA};
-            text-align:center;font-size:0.7rem;color:{TEXTO_MUTED}">
-    Dados: SINAN / Ministério da Saúde ·
-    Base atualizada em: <b style="color:{LARANJA_CLARO}">{ultima_atualizacao}</b> ·
-    Última SE disponível: <b style="color:{LARANJA_CLARO}">{ultima_sem}</b> ·
-    Dados sujeitos a revisão
-</div>
-""", unsafe_allow_html=True)
+with aba_notificacao:
+    render_dashboard_tab(
+        base,
+        date_col="DT_NOTIFIC",
+        sem_label_col="sem_label_notificacao",
+        tab_key="notificacao",
+        tab_title="Leitura por notificação",
+        tab_subtitle="Semana epidemiológica baseada na data da notificação",
+        periodo_label="Notificação",
+    )

@@ -1,5 +1,5 @@
 {
-  "source": "pysus",
+  "source": "local",
   "disease": "MENI",
   "years": [
     2025,
@@ -9,8 +9,18 @@
   "rows_raw": 35041,
   "rows_processed": 34358,
   "columns_raw": 132,
-  "columns_processed": 143,
-  "generated_at": "2026-06-06T18:53:37",
+  "columns_processed": 150,
+  "temporal_profiles": {
+    "sintomas": {
+      "date_column": "DT_SIN_PRI",
+      "week_label_column": "sem_label"
+    },
+    "notificacao": {
+      "date_column": "DT_NOTIFIC",
+      "week_label_column": "sem_label_notificacao"
+    }
+  },
+  "generated_at": "2026-06-07T19:47:57",
   "rows_after_filter": 1749,
   "files": [
     "base_enriquecida.parquet",

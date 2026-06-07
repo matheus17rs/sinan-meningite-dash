@@ -50,6 +50,17 @@ def faixa_etaria(idade_anos: pd.Series) -> pd.Series:
     return pd.cut(idade_anos, bins=bins, labels=labels, right=False)
 
 
+def _label_semana_por_data(datas: pd.Series) -> pd.Series:
+    iso = datas.dt.isocalendar()
+    semanas = pd.Series(index=datas.index, dtype="object")
+    mascara_valida = iso.year.notna() & iso.week.notna()
+    if mascara_valida.any():
+        ano = iso.loc[mascara_valida, "year"].astype(int).astype(str).str.zfill(4)
+        semana = iso.loc[mascara_valida, "week"].astype(int).astype(str).str.zfill(2)
+        semanas.loc[mascara_valida] = ano + "-SE" + semana
+    return semanas
+
+
 def top5_com_outros(serie_contagem: pd.Series, col_nome: str) -> pd.DataFrame:
     serie_contagem = serie_contagem.dropna()
     if serie_contagem.empty:
@@ -142,6 +153,15 @@ def construir_base_enriquecida(df_raw: pd.DataFrame) -> pd.DataFrame:
     sem_raw = coluna_obrigatoria("SEM_PRI").astype(str).str.strip().str.zfill(6)
     novos["sem_label"] = sem_raw.str[:4] + "-SE" + sem_raw.str[4:]
     novos["sem_label"] = novos["sem_label"].where(novos["sem_label"].str.match(r"^\d{4}-SE\d{2}$"), other=None)
+    novos["ano_sintomas"] = pd.to_numeric(novos["sem_label"].astype(str).str.extract(r"^(\d{4})-SE\d{2}$")[0], errors="coerce").astype("Int64")
+    novos["semana_sintomas"] = pd.to_numeric(novos["sem_label"].astype(str).str.extract(r"SE(\d{2})$")[0], errors="coerce").astype("Int64")
+    novos["sem_label_sintomas"] = novos["sem_label"]
+
+    dt_notific = coluna_obrigatoria("DT_NOTIFIC")
+    novos["dt_notific_date"] = dt_notific.dt.date
+    novos["ano_notificacao"] = dt_notific.dt.year.astype("Int64")
+    novos["semana_notificacao"] = dt_notific.dt.isocalendar().week.astype("Int64")
+    novos["sem_label_notificacao"] = _label_semana_por_data(dt_notific)
 
     evo = pd.to_numeric(coluna_obrigatoria("EVOLUCAO"), errors="coerce").fillna(-1)
     novos["evolucao_label"] = np.where(

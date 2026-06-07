@@ -36,6 +36,16 @@ def executar_etl() -> dict[str, object]:
     metadata["rows_processed"] = int(len(df))
     metadata["columns_raw"] = int(len(df_raw.columns))
     metadata["columns_processed"] = int(len(df.columns))
+    metadata["temporal_profiles"] = {
+        "sintomas": {
+            "date_column": "DT_SIN_PRI",
+            "week_label_column": "sem_label",
+        },
+        "notificacao": {
+            "date_column": "DT_NOTIFIC",
+            "week_label_column": "sem_label_notificacao",
+        },
+    }
     salvar_tabelas(tabelas, metadata)
 
     LOGGER.info("ETL concluido com sucesso.")
