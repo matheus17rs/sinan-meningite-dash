@@ -343,6 +343,110 @@ def contar_sintomas(df_sub: pd.DataFrame) -> pd.DataFrame:
     return top5_com_outros(pd.Series(sint_counts).sort_values(ascending=False), "sintoma")
 
 
+def numero_semana(sem_label: pd.Series) -> pd.Series:
+    return pd.to_numeric(sem_label.astype(str).str.extract(r"SE(\d{2})$")[0], errors="coerce")
+
+
+def calcular_yoy_periodo(base_total: pd.DataFrame) -> dict:
+    base_yoy = base_total.copy()
+    base_yoy["ano_notificacao"] = base_yoy["DT_NOTIFIC"].dt.year
+    base_yoy["sem_num"] = numero_semana(base_yoy["sem_label"])
+
+    semanas_2026 = base_yoy.loc[base_yoy["ano_notificacao"] == 2026, "sem_num"].dropna()
+    semana_atual = int(semanas_2026.max()) if not semanas_2026.empty else None
+
+    metricas = {
+        "total_notificacoes": lambda df: int(df["TP_NOT"].count()),
+        "total_confirmados": lambda df: int(df["is_confirmado"].sum()),
+        "total_meningococica": lambda df: int(df["is_meningococica"].sum()),
+        "total_sorogrupo_b": lambda df: int(df["is_sorogrupo_b"].sum()),
+        "total_outro_tipo": lambda df: int(df["is_outro_tipo"].sum()),
+    }
+
+    resultado = {}
+    for nome, funcao in metricas.items():
+        if semana_atual is None:
+            valor_2026 = 0
+            valor_2025 = 0
+        else:
+            base_periodo = base_yoy[base_yoy["sem_num"].between(1, semana_atual, inclusive="both")]
+            valor_2026 = funcao(base_periodo[base_periodo["ano_notificacao"] == 2026])
+            valor_2025 = funcao(base_periodo[base_periodo["ano_notificacao"] == 2025])
+
+        delta_abs = valor_2026 - valor_2025
+        delta_pct = (delta_abs / valor_2025 * 100) if valor_2025 else np.nan
+        resultado[nome] = {
+            "valor_2026": valor_2026,
+            "valor_2025": valor_2025,
+            "delta_abs": delta_abs,
+            "delta_pct": delta_pct,
+            "semana_atual": semana_atual,
+        }
+
+    return resultado
+
+
+def formatar_yoy(yoy: dict) -> str:
+    if pd.isna(yoy["delta_pct"]):
+        variacao = "N/D"
+    else:
+        sinal = "+" if yoy["delta_pct"] >= 0 else ""
+        variacao = f"{sinal}{yoy['delta_pct']:.1f}%"
+
+    semana = yoy["semana_atual"] if yoy["semana_atual"] is not None else "N/D"
+    return (
+        f"2026 x 2025 ate SE{semana}: {yoy['valor_2026']:,} vs "
+        f"{yoy['valor_2025']:,} ({variacao})"
+    )
+
+
+def calcular_crescimento_uf(base_total: pd.DataFrame, coluna_mapa: str) -> pd.DataFrame:
+    base_yoy = base_total.copy()
+    base_yoy["ano_notificacao"] = base_yoy["DT_NOTIFIC"].dt.year
+    base_yoy["sem_num"] = numero_semana(base_yoy["sem_label"])
+
+    semanas_2026 = base_yoy.loc[base_yoy["ano_notificacao"] == 2026, "sem_num"].dropna()
+    if semanas_2026.empty:
+        return pd.DataFrame(columns=["uf_notificacao", "valor_2026", "valor_2025", "crescimento_pct"])
+
+    semana_atual = int(semanas_2026.max())
+    base_periodo = base_yoy[base_yoy["sem_num"].between(1, semana_atual, inclusive="both")]
+
+    if coluna_mapa == "total_notificacoes":
+        agg_col = "TP_NOT"
+        agg_func = "count"
+    elif coluna_mapa == "total_meningococica":
+        agg_col = "is_meningococica"
+        agg_func = "sum"
+    elif coluna_mapa == "total_sorogrupo_b":
+        agg_col = "is_sorogrupo_b"
+        agg_func = "sum"
+    else:
+        agg_col = "is_confirmado"
+        agg_func = "sum"
+
+    resumo = (
+        base_periodo.groupby(["uf_notificacao", "ano_notificacao"], as_index=False)
+        .agg(valor=(agg_col, agg_func))
+    )
+    pivot = (
+        resumo.pivot(index="uf_notificacao", columns="ano_notificacao", values="valor")
+        .fillna(0)
+        .rename(columns={2025: "valor_2025", 2026: "valor_2026"})
+        .reset_index()
+    )
+    for col in ["valor_2025", "valor_2026"]:
+        if col not in pivot.columns:
+            pivot[col] = 0
+
+    pivot["crescimento_pct"] = np.where(
+        pivot["valor_2025"] > 0,
+        (pivot["valor_2026"] - pivot["valor_2025"]) / pivot["valor_2025"] * 100,
+        np.where(pivot["valor_2026"] > 0, 100.0, 0.0),
+    )
+    return pivot
+
+
 def gerar_tabelas_dashboard(df: pd.DataFrame) -> dict:
     if df.empty:
         return {
@@ -488,6 +592,7 @@ if base.empty:
 
 base["DT_NOTIFIC"] = pd.to_datetime(base["DT_NOTIFIC"], errors="coerce")
 anos_disponiveis = sorted(base["DT_NOTIFIC"].dt.year.dropna().astype(int).unique().tolist())
+ufs_disponiveis = sorted(base["uf_notificacao"].dropna().astype(str).unique().tolist())
 
 if not anos_disponiveis:
     st.error("A base nao possui valores validos em DT_NOTIFIC para montar o filtro de ano.")
@@ -544,8 +649,8 @@ st.markdown(f"""
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-filtro_col, _ = st.columns([1, 3])
-with filtro_col:
+col_ano, col_uf, _ = st.columns([1, 1, 2])
+with col_ano:
     st.markdown(
         f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
         f"letter-spacing:0.08em;margin-bottom:0.3rem'>Ano da Notificacao</div>",
@@ -558,15 +663,31 @@ with filtro_col:
         label_visibility="collapsed",
         key="filtro_ano_notificacao",
     )
+with col_uf:
+    st.markdown(
+        f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;"
+        f"letter-spacing:0.08em;margin-bottom:0.3rem'>UF de Notificacao</div>",
+        unsafe_allow_html=True,
+    )
+    opcao_uf = st.selectbox(
+        "UF",
+        options=["Todos"] + ufs_disponiveis,
+        index=0,
+        label_visibility="collapsed",
+        key="filtro_uf_notificacao",
+    )
 
 ano_selecionado = None if opcao_ano == "Todos" else int(opcao_ano)
-base_filtrada = base if ano_selecionado is None else base[base["DT_NOTIFIC"].dt.year == ano_selecionado].copy()
+uf_selecionada = None if opcao_uf == "Todos" else opcao_uf
+base_uf = base if uf_selecionada is None else base[base["uf_notificacao"] == uf_selecionada].copy()
+base_filtrada = base_uf if ano_selecionado is None else base_uf[base_uf["DT_NOTIFIC"].dt.year == ano_selecionado].copy()
 
 if base_filtrada.empty:
     st.warning("Nao ha registros para o ano selecionado.")
     st.stop()
 
 dados = gerar_tabelas_dashboard(base_filtrada)
+yoy_cards = calcular_yoy_periodo(base_uf)
 vg  = dados.get("visao_geral", pd.DataFrame())
 es  = dados.get("evolucao_semanal", pd.DataFrame())
 fe  = dados.get("faixa_etaria",  pd.DataFrame())
@@ -593,6 +714,7 @@ with c1:
     st.markdown(f"""<div class="metric-card">
         <div class="label">Total de Notificações</div>
         <div class="value">{total_notif:,}</div>
+        <div class="sub">{formatar_yoy(yoy_cards["total_notificacoes"])}</div>
         <div class="sub">Casos notificados no período</div>
     </div>""", unsafe_allow_html=True)
 
@@ -600,6 +722,7 @@ with c2:
     st.markdown(f"""<div class="metric-card">
         <div class="label">Casos Confirmados</div>
         <div class="value" style="color:{LARANJA_CLARO}">{total_conf:,}</div>
+        <div class="sub">{formatar_yoy(yoy_cards["total_confirmados"])}</div>
         <div class="sub">{pct_conf:.1f}% do total notificado</div>
     </div>""", unsafe_allow_html=True)
 
@@ -607,6 +730,7 @@ with c3:
     st.markdown(f"""<div class="metric-card">
         <div class="label">Meningite Meningocócica</div>
         <div class="value" style="color:{AMARELO_ACC}">{total_mening:,}</div>
+        <div class="sub">{formatar_yoy(yoy_cards["total_meningococica"])}</div>
         <div class="sub">{pct_mening:.1f}% dos confirmados</div>
         <div class="sub-kpi">
             <div class="sub-label">Sorogrupo B</div>
@@ -618,6 +742,7 @@ with c4:
     st.markdown(f"""<div class="metric-card">
         <div class="label">Outros Tipos Confirmados</div>
         <div class="value" style="color:{TEXTO_MUTED}">{total_outro:,}</div>
+        <div class="sub">{formatar_yoy(yoy_cards["total_outro_tipo"])}</div>
         <div class="sub">{pct_outro:.1f}% dos confirmados</div>
     </div>""", unsafe_allow_html=True)
 
@@ -757,8 +882,8 @@ st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 st.markdown('<div class="section-title">Mapa de Casos</div>', unsafe_allow_html=True)
 st.markdown('<div class="section-subtitle">Volume absoluto de casos confirmados por UF</div>', unsafe_allow_html=True)
 
-col_fm, _ = st.columns([2, 3])
-with col_fm:
+col_fm_tipo, col_fm_criterio, _ = st.columns([2, 2, 1])
+with col_fm_tipo:
     st.markdown(f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem'>Tipo de Caso</div>", unsafe_allow_html=True)
     tipo_mapa = st.selectbox(
         "Tipo Mapa",
@@ -766,6 +891,15 @@ with col_fm:
         index=0,
         label_visibility="collapsed",
         key="tipo_mapa",
+    )
+with col_fm_criterio:
+    st.markdown(f"<div style='font-size:0.72rem;color:{TEXTO_MUTED};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem'>Criterio de Cor</div>", unsafe_allow_html=True)
+    criterio_mapa = st.selectbox(
+        "Criterio Mapa",
+        options=["Valor absoluto", "Crescimento 2026 x 2025"],
+        index=0,
+        label_visibility="collapsed",
+        key="criterio_mapa",
     )
 
 col_mapa_map = {
@@ -775,9 +909,44 @@ col_mapa_map = {
 }
 coluna_mapa = col_mapa_map[tipo_mapa]
 
-mapa_df = vg.copy()
-mapa_df["nome_uf"] = mapa_df["uf_notificacao"].map(SIGLA_PARA_NOME)
-mapa_df = mapa_df.dropna(subset=["nome_uf"])
+if criterio_mapa == "Crescimento 2026 x 2025":
+    mapa_df = calcular_crescimento_uf(base_uf, coluna_mapa)
+    mapa_df["nome_uf"] = mapa_df["uf_notificacao"].map(SIGLA_PARA_NOME)
+    mapa_df = mapa_df.dropna(subset=["nome_uf"])
+    cor_mapa = "crescimento_pct"
+    titulo_barra_mapa = "Crescimento (%)"
+    escala_mapa = [
+        [0.0, "#050505"],
+        [0.35, "#3A1E11"],
+        [0.7, "#9B4315"],
+        [1.0, "#FF4500"],
+    ]
+    hover_mapa = {
+        "crescimento_pct": ":.1f",
+        "valor_2026": True,
+        "valor_2025": True,
+        "nome_uf": False,
+    }
+    labels_mapa = {
+        "crescimento_pct": "Crescimento (%)",
+        "valor_2026": "2026",
+        "valor_2025": "2025",
+    }
+else:
+    mapa_df = vg.copy()
+    mapa_df["nome_uf"] = mapa_df["uf_notificacao"].map(SIGLA_PARA_NOME)
+    mapa_df = mapa_df.dropna(subset=["nome_uf"])
+    cor_mapa = coluna_mapa
+    titulo_barra_mapa = "Casos"
+    escala_mapa = [
+        [0.0,  "#1F0F08"],
+        [0.25, "#6B3A1F"],
+        [0.5,  "#C45A1A"],
+        [0.75, "#E8600A"],
+        [1.0,  "#FF4500"],
+    ]
+    hover_mapa = {coluna_mapa: True, "nome_uf": False}
+    labels_mapa = {coluna_mapa: "Casos"}
 
 col_map, col_leg = st.columns([4, 1])
 with col_map:
@@ -787,17 +956,11 @@ with col_map:
             geojson=geojson,
             locations="nome_uf",
             featureidkey="properties.name",
-            color=coluna_mapa,
-            color_continuous_scale=[
-                [0.0,  "#1F0F08"],
-                [0.25, "#6B3A1F"],
-                [0.5,  "#C45A1A"],
-                [0.75, "#E8600A"],
-                [1.0,  "#FF4500"],
-            ],
+            color=cor_mapa,
+            color_continuous_scale=escala_mapa,
             hover_name="nome_uf",
-            hover_data={coluna_mapa: True, "nome_uf": False},
-            labels={coluna_mapa: "Casos"},
+            hover_data=hover_mapa,
+            labels=labels_mapa,
         )
         fig_mapa.update_geos(fitbounds="locations", visible=False, bgcolor="rgba(0,0,0,0)")
         fig_mapa.update_layout(
@@ -807,7 +970,7 @@ with col_map:
             font=dict(family="Inter", color=TEXTO_CLARO),
             margin=dict(l=0, r=0, t=10, b=0),
             coloraxis_colorbar=dict(
-                title="Casos",
+                title=titulo_barra_mapa,
                 tickfont=dict(color=TEXTO_CLARO),
                 title_font=dict(color=TEXTO_CLARO),
                 bgcolor="rgba(0,0,0,0)",
@@ -819,11 +982,12 @@ with col_map:
         st.warning("Não foi possível carregar o GeoJSON. Verifique a conexão.")
 
 with col_leg:
+    legenda_subtitulo = "Crescimento vs 2025" if criterio_mapa == "Crescimento 2026 x 2025" else "Casos absolutos"
     st.markdown(f"""
     <div class="legend-box" style="margin-top:3rem">
         <div style="font-family:Syne,sans-serif;font-size:0.8rem;font-weight:700;
                     color:{TEXTO_CLARO};margin-bottom:0.8rem">
-            Volume<br><span style="font-size:0.68rem;color:{TEXTO_MUTED}">Casos absolutos</span>
+            Volume<br><span style="font-size:0.68rem;color:{TEXTO_MUTED}">{legenda_subtitulo}</span>
         </div>
         <div class="legend-item"><div class="legend-dot" style="background:#FF4500"></div>Muito alto</div>
         <div class="legend-item"><div class="legend-dot" style="background:#E8600A"></div>Alto</div>
