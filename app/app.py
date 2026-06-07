@@ -771,17 +771,7 @@ st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 st.markdown('<div class="section-title">Visão Geral por UF</div>', unsafe_allow_html=True)
 st.markdown('<div class="section-subtitle">Distribuição de casos por Unidade Federativa de notificação</div>', unsafe_allow_html=True)
 
-totais = pd.DataFrame([{
-    "uf_notificacao":    "BRASIL",
-    "total_notificacoes":  total_notif,
-    "total_confirmados":   total_conf,
-    "total_meningococica": total_mening,
-    "total_sorogrupo_b":   total_sorob,
-    "total_outro_tipo":    total_outro,
-}])
-tabela = pd.concat([vg, totais], ignore_index=True)
-
-tabela_visao = tabela.copy()
+tabela_visao = vg.copy()
 tabela_visao["total_confirmados_pct"] = tabela_visao["total_confirmados"] / tabela_visao["total_notificacoes"] * 100
 tabela_visao["total_meningococica_pct"] = tabela_visao["total_meningococica"] / tabela_visao["total_confirmados"] * 100
 tabela_visao["total_sorogrupo_b_pct"] = tabela_visao["total_sorogrupo_b"] / tabela_visao["total_confirmados"] * 100
