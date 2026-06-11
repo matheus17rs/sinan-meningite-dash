@@ -1,5 +1,5 @@
 {
-  "source": "local",
+  "source": "pysus",
   "disease": "MENI",
   "years": [
     2025,
@@ -20,7 +20,7 @@
       "week_label_column": "sem_label_notificacao"
     }
   },
-  "generated_at": "2026-06-07T19:47:57",
+  "generated_at": "2026-06-11T10:42:45",
   "rows_after_filter": 1749,
   "files": [
     "base_enriquecida.parquet",
